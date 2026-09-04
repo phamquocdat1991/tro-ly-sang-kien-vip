@@ -5,6 +5,7 @@ export const metadata: Metadata = {
   title: "Trợ lý Sáng kiến VIP - GDPT 2018",
   description: "Thiết lập hồ sơ và xây dựng nội dung sáng kiến giáo dục theo từng bước.",
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+  other: { "codex-preview": "development" },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
