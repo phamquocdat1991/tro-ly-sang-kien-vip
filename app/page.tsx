@@ -178,16 +178,16 @@ function UploadPanel({ title, hint, files, multiple, onFiles, onRemove }: {
 }) {
   return <div className="upload-panel">
     <div className="upload-copy"><FileCheck2 size={25} /><div><strong>{title}</strong><span>{hint}</span></div></div>
-    <label className="upload-drop"><Upload size={23} /><span>Kéo thả hoặc <b>chọn tệp</b></span><small>PDF, Word, TXT · tối đa 10 MB/tệp</small><input type="file" accept=".pdf,.doc,.docx,.txt" multiple={multiple} onChange={(event) => { onFiles(event.target.files); event.target.value = ""; }} /></label>
+    <label className="upload-drop" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); onFiles(event.dataTransfer.files); }}><Upload size={23} /><span>Kéo thả hoặc <b>chọn tệp</b></span><small>PDF, Word, TXT · tối đa 10 MB/tệp</small><input type="file" accept=".pdf,.doc,.docx,.txt" multiple={multiple} onChange={(event) => { onFiles(event.target.files); event.target.value = ""; }} /></label>
     {files.length > 0 && <div className="file-list">{files.map((file) => <div className="file-row" key={file.id}><FileText size={18} /><span><b>{file.name}</b><small>{formatFileSize(file.size)}</small></span><button type="button" aria-label={`Xóa ${file.name}`} onClick={() => onRemove(file.id)}><Trash2 size={16} /></button></div>)}</div>}
-    <p className="privacy-note"><ShieldCheck size={15} /> Tệp chỉ được xử lý trên thiết bị này, không tự động gửi lên máy chủ.</p>
+    <p className="privacy-note"><ShieldCheck size={15} /> Lưu danh mục tệp trên thiết bị; TXT được đọc tối đa 3.000 ký tự. Với PDF/Word, hãy dán nội dung cần dùng vào ghi chú.</p>
   </div>;
 }
 
 function AssistantCard() {
   return <aside className="assistant-card" id="assistant-info">
     <div className="assistant-title-row"><div className="assistant-icon"><BookOpen size={24} /></div><div><h2>TRỢ LÝ SÁNG KIẾN VIP - GDPT 2018</h2><p>Soạn thảo có kiểm soát, không tự bịa số liệu khảo nghiệm</p></div></div>
-    <div className="assistant-badges"><span>Phiên bản v4.3</span><span><ShieldCheck size={14} /> Xử lý cục bộ</span></div>
+    <div className="assistant-badges"><span>Phiên bản v4.4</span><span><ShieldCheck size={14} /> Xử lý cục bộ</span></div>
     <div className="assistant-rule" />
     <div className="info-box"><span className="info-label"><UserRound size={16} /> THÔNG TIN PHÁT TRIỂN</span><strong>Phát triển bởi Anh giáo PHẠM QUỐC ĐẠT</strong><p>Giáo viên cần kiểm tra nội dung, số liệu và tài liệu dẫn trước khi nộp.</p></div>
     <footer>© 2026 · Phát triển bởi Anh giáo PHẠM QUỐC ĐẠT</footer>
@@ -206,6 +206,7 @@ export default function Home() {
   const [drafts, setDrafts] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState("preview");
   const [hydrated, setHydrated] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const workRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLElement>(null);
@@ -224,7 +225,7 @@ export default function Home() {
           setSavedAt(Date.now());
         }
       } catch {
-        window.localStorage.removeItem(STORAGE_KEY);
+        try { window.localStorage.removeItem(STORAGE_KEY); } catch { /* Storage may be disabled. */ }
       } finally {
         setHydrated(true);
       }
@@ -235,8 +236,7 @@ export default function Home() {
   useEffect(() => {
     if (!hydrated) return;
     const timer = window.setTimeout(() => {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ profile, requirements, template, references, drafts }));
-      setSavedAt(Date.now());
+      try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ profile, requirements, template, references, drafts })); setSavedAt(Date.now()); setSaveError(false); } catch { setSaveError(true); }
     }, 300);
     return () => window.clearTimeout(timer);
   }, [drafts, hydrated, profile, references, requirements, template]);
@@ -283,6 +283,7 @@ export default function Home() {
   const startWriting = (selectedMode: Mode) => {
     const missing = fields.find((field) => field.required && !profile[field.key].trim());
     if (missing) { toast.error(`Vui lòng nhập ${missing.label.toLowerCase()}.`); document.getElementById(`field-${missing.key}`)?.focus(); return; }
+    if (drafts.length && !window.confirm("Tạo lại nội dung sẽ thay thế bản nháp đang có. Thầy/cô đã tải bản sao và muốn tiếp tục?")) return;
     setMode(selectedMode); setDrafts(buildSections(profile, requirements, template, references)); setPhase(0); setProgress(8); setStage("loading");
   };
 
@@ -302,40 +303,46 @@ export default function Home() {
   };
 
   const saveNow = () => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ profile, requirements, template, references, drafts }));
-    setSavedAt(Date.now()); toast.success("Đã lưu bản nháp trên thiết bị này.");
+    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ profile, requirements, template, references, drafts })); setSavedAt(Date.now()); setSaveError(false); toast.success("Đã lưu bản nháp trên thiết bị này."); } catch { setSaveError(true); toast.error("Không thể lưu trên thiết bị. Hãy tải bản sao hồ sơ."); }
   };
 
   const reset = () => {
     setProfile(emptyProfile); setRequirements(emptyRequirements); setTemplate(null); setReferences([]); setDrafts([]);
-    setStage("form"); setPhase(0); setProgress(0); window.localStorage.removeItem(STORAGE_KEY);
+    setStage("form"); setPhase(0); setProgress(0); try { window.localStorage.removeItem(STORAGE_KEY); } catch { /* Storage may be disabled. */ }
     window.setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 50); toast.success("Đã tạo hồ sơ mới.");
   };
 
   return <main className="site-shell">
     <header className="topbar"><div className="topbar-inner">
       <div className="brand-lockup"><Sparkles size={22} /><span><b>SÁNG KIẾN VIP</b><small>GDPT 2018</small></span></div>
-      <div className="header-actions"><span className="save-state"><CheckCircle2 size={15} /> {savedAt ? "Đã tự lưu" : "Bản nháp mới"}</span>
+      <div className="header-actions"><span className="save-state"><CheckCircle2 size={15} /> {saveError ? "Chưa lưu được" : savedAt ? "Đã tự lưu" : "Bản nháp mới"}</span>
         <Dialog><DialogTrigger asChild><button className="guide-button" type="button"><BookOpen size={18} /> Hướng dẫn</button></DialogTrigger><DialogContent className="guide-dialog"><DialogHeader><DialogTitle>Quy trình xây dựng sáng kiến</DialogTitle><DialogDescription>Chuẩn bị hồ sơ, tạo nội dung và kiểm tra trước khi xuất bản.</DialogDescription></DialogHeader><ol><li>Tải mẫu yêu cầu của Sở/Phòng/đơn vị nếu có.</li><li>Nhập đủ thông tin bắt buộc; bổ sung dữ liệu càng cụ thể càng tốt.</li><li>Đính kèm danh mục tài liệu và chọn yêu cầu đầu ra.</li><li>Duyệt từng phần hoặc tạo nhanh toàn bộ, sau đó xuất Word/in PDF.</li></ol></DialogContent></Dialog>
       </div>
     </div></header>
 
     <div className="page-content">
       <section className="profile-section" id="profile" ref={formRef}>
-        <div className="hero-row"><div className="hero-mark"><Sparkles size={31} /></div><div><p className="eyebrow">TRỢ LÝ SOẠN THẢO CÓ KIỂM SOÁT</p><h1>Thiết lập hồ sơ <span>Sáng kiến</span><b>VIP</b></h1><p>Chuẩn hóa đầu vào, nhắc minh chứng và tạo bản Word có thể chỉnh sửa.</p></div></div>
-        <div className="setup-progress" aria-label="Tiến độ chuẩn bị hồ sơ">{["Mẫu yêu cầu", "Thông tin", "Tài liệu", "Đầu ra"].map((label, index) => <div className={completion[index] ? "done" : ""} key={label}><span>{completion[index] ? <Check size={15} /> : index + 1}</span><b>{label}</b></div>)}</div>
+        <div className="sunrise-hero">
+          <div><p className="eyebrow">VÌ NHỮNG LỚP HỌC HẠNH PHÚC</p><h1>Trợ lý <span>Sáng kiến VIP</span></h1><p className="hero-lead">Mỗi sáng kiến là một bước tiến cho lớp học.</p><p>Chuẩn hóa hồ sơ, phát triển ý tưởng và soạn bản thảo có minh chứng cùng thầy, cô.</p>
+          <div className="hero-actions"><button type="button" onClick={() => startWriting("automatic")}><Sparkles size={18} /> Tạo nhanh toàn bộ <ArrowRight size={18} /></button><button type="button" onClick={() => startWriting("guided")}><ListChecks size={18} /> Xây dựng từng bước</button></div>
+          <div className="trust-row"><span><ShieldCheck size={16} /> Không tự bịa số liệu</span><span><Save size={16} /> Lưu nháp trên thiết bị</span><span><FileText size={16} /> Xuất Word chỉnh sửa</span></div></div>
+          <aside className="welcome-note"><GraduationCap size={36} /><p>Xin chào, {profile.author || "thầy/cô"}!</p><h2>Ý tưởng hôm nay.<br />Thay đổi ngày mai.</h2><span>GDPT 2018 · Đồng hành cùng giáo viên</span></aside>
+        </div>
+        <nav className="setup-progress" aria-label="Tiến độ chuẩn bị hồ sơ">{["Mẫu yêu cầu", "Thông tin", "Tài liệu", "Đầu ra", "Soạn thảo", "Xem trước"].map((label, index) => <button type="button" className={(index < 4 ? completion[index] : index === 4 ? drafts.length > 0 : stage === "complete") ? "done" : ""} key={label} onClick={() => { if (index < 4) document.getElementById(`setup-${index}`)?.scrollIntoView({ behavior: "smooth" }); else if (drafts.length === 6) { setMode("guided"); setPhase(0); setStage(index === 5 ? "complete" : "review"); } else toast.info("Nhập hồ sơ và tạo nội dung để bắt đầu soạn thảo."); }}><span>{index + 1}</span><b>{label}</b></button>)}</nav>
+        <div className="draft-dashboard"><div><Save size={22} /><span><b>{drafts.length ? "Bản nháp sẵn sàng tiếp tục" : "Bắt đầu từ ý tưởng của thầy, cô"}</b><small>{drafts.length ? `${drafts.length} phần đã tạo · ${drafts.join(" ").trim().split(/\s+/).length} từ` : "Điền thông tin bên dưới để xây dựng sáng kiến."}</small></span></div><div className="draft-actions">{drafts.length === 6 && <button type="button" onClick={() => { setMode("guided"); setStage("review"); }}>Tiếp tục soạn thảo <ArrowRight size={16} /></button>}<button type="button" onClick={() => { const url = URL.createObjectURL(new Blob([JSON.stringify({ profile, requirements, template, references, drafts }, null, 2)], { type: "application/json" })); const a = document.createElement("a"); a.href = url; a.download = "ho-so-sang-kien.json"; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }}><Download size={16} /> Tải bản sao hồ sơ</button></div></div>
+        {saveError && <p role="alert">Chưa lưu được trên thiết bị. Hãy tải bản sao hồ sơ để giữ nội dung.</p>}
 
-        <section className="setup-card"><div className="section-heading"><span>1</span><div><h2>Mẫu yêu cầu của đơn vị</h2><p>Không bắt buộc. Dùng để quản lý đúng mẫu Sở/Phòng/Trường đang áp dụng.</p></div></div><UploadPanel title="Tải mẫu yêu cầu sáng kiến" hint="Chọn một tệp mẫu chính thức" files={template ? [template] : []} onFiles={(files) => readFiles(files, "template")} onRemove={() => setTemplate(null)} /></section>
+        <section className="setup-card" id="setup-0"><div className="section-heading"><span>1</span><div><h2>Mẫu yêu cầu của đơn vị</h2><p>Không bắt buộc. Dùng để quản lý đúng mẫu Sở/Phòng/Trường đang áp dụng.</p></div></div><UploadPanel title="Tải mẫu yêu cầu sáng kiến" hint="Chọn một tệp mẫu chính thức" files={template ? [template] : []} onFiles={(files) => readFiles(files, "template")} onRemove={() => setTemplate(null)} /></section>
 
-        <section className="setup-card"><div className="section-heading"><span>2</span><div><h2>Thông tin sáng kiến</h2><p>Các mục có dấu * là bắt buộc.</p></div></div><div className="profile-grid">{fields.map((field) => {
+        <section className="setup-card" id="setup-1"><div className="section-heading"><span>2</span><div><h2>Thông tin sáng kiến</h2><p>Các mục có dấu * là bắt buộc.</p></div></div><div className="profile-grid">{fields.map((field) => {
           const Icon = field.icon;
           const common = { id: `field-${field.key}`, value: profile[field.key], placeholder: field.placeholder, onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => updateField(field.key, event.target.value), required: field.required };
           return <label className={`field-card ${field.multiline ? "wide" : ""}`} style={{ "--field-color": field.color } as React.CSSProperties} key={field.key}><span><Icon size={20} /> {field.label} {field.required && <em>*</em>}</span>{field.multiline ? <textarea {...common} rows={3} /> : <input {...common} />}</label>;
         })}</div></section>
 
-        <section className="setup-card"><div className="section-heading"><span>3</span><div><h2>Tài liệu tham khảo</h2><p>Tối đa 6 tệp. Có thể bổ sung ghi chú hoặc trích dẫn quan trọng.</p></div></div><UploadPanel title="Tải tài liệu PDF/Word/TXT" hint="Sáng kiến cũ, tài liệu chuyên môn, đề kiểm tra, văn bản pháp lý..." files={references} multiple onFiles={(files) => readFiles(files, "reference")} onRemove={(id) => setReferences((current) => current.filter((file) => file.id !== id))} /><label className="plain-field"><span>Ghi chú từ tài liệu</span><textarea value={requirements.referenceNotes} onChange={(event) => setRequirements((current) => ({ ...current, referenceNotes: event.target.value }))} placeholder="Dán trích dẫn, yêu cầu cấu trúc hoặc nội dung cần bám sát..." rows={4} /></label></section>
+        <section className="setup-card" id="setup-2"><div className="section-heading"><span>3</span><div><h2>Tài liệu tham khảo</h2><p>Tối đa 6 tệp. Có thể bổ sung ghi chú hoặc trích dẫn quan trọng.</p></div></div><UploadPanel title="Tải tài liệu PDF/Word/TXT" hint="Sáng kiến cũ, tài liệu chuyên môn, đề kiểm tra, văn bản pháp lý..." files={references} multiple onFiles={(files) => readFiles(files, "reference")} onRemove={(id) => setReferences((current) => current.filter((file) => file.id !== id))} /><label className="plain-field"><span>Ghi chú từ tài liệu</span><textarea value={requirements.referenceNotes} onChange={(event) => setRequirements((current) => ({ ...current, referenceNotes: event.target.value }))} placeholder="Dán trích dẫn, yêu cầu cấu trúc hoặc nội dung cần bám sát..." rows={4} /></label></section>
 
-        <section className="setup-card"><div className="section-heading"><span>4</span><div><h2>Yêu cầu đầu ra</h2><p>Thiết lập độ chi tiết và nguyên tắc tạo nội dung.</p></div></div>
+        <section className="setup-card" id="setup-3"><div className="section-heading"><span>4</span><div><h2>Yêu cầu đầu ra</h2><p>Thiết lập độ chi tiết và nguyên tắc tạo nội dung.</p></div></div>
           <div className="requirements-grid"><label className="mini-field"><span>Số giải pháp</span><input type="number" min={2} max={6} value={requirements.solutionCount} onChange={(event) => setRequirements((current) => ({ ...current, solutionCount: Math.min(6, Math.max(2, Number(event.target.value) || 2)) }))} /></label><label className="mini-field"><span>Mục tiêu số trang</span><input inputMode="numeric" value={requirements.pageTarget} onChange={(event) => setRequirements((current) => ({ ...current, pageTarget: event.target.value.replace(/\D/g, "").slice(0, 2) }))} placeholder="VD: 20" /></label></div>
           <div className="check-list"><label><Checkbox checked={requirements.realExamples} onCheckedChange={(checked) => setRequirements((current) => ({ ...current, realExamples: checked === true }))} /><span><b>Thêm ví dụ minh họa</b><small>Tạo khung ví dụ để giáo viên điền tình huống thật.</small></span></label><label><Checkbox checked={requirements.statistics} onCheckedChange={(checked) => setRequirements((current) => ({ ...current, statistics: checked === true }))} /><span><b>Thêm khung số liệu trước – sau</b><small>Không tự bịa số liệu; chỉ tạo vị trí cần bổ sung minh chứng.</small></span></label></div>
           <label className="plain-field"><span>Yêu cầu bổ sung</span><textarea value={requirements.notes} onChange={(event) => setRequirements((current) => ({ ...current, notes: event.target.value }))} placeholder="VD: Viết gọn cơ sở lý luận; tập trung giải pháp có thể nhân rộng..." rows={4} /></label>
